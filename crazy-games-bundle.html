@@ -1,0 +1,374 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Shots: Arena Shooter | Elite Tactical Combat</title>
+    
+    <!-- External Dependencies -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;900&display=swap" rel="stylesheet">
+    
+    <!-- React & Babel for Standalone Execution -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        :root {
+            --team-a: #ff3131;
+            --team-b: #00d2ff;
+            --bg-dark: #020617;
+        }
+        body { margin: 0; padding: 0; background-color: var(--bg-dark); font-family: 'Inter', sans-serif; overflow: hidden; color: white; }
+        .pixel-font { font-family: 'Press+Start+2P', cursive; }
+        canvas { display: block; background: #010409; image-rendering: pixelated; touch-action: none; box-shadow: 0 0 100px rgba(0,0,0,1); }
+        
+        .scan-line {
+            background: linear-gradient(to bottom, transparent 50%, rgba(0, 210, 255, 0.05) 50%);
+            background-size: 100% 4px;
+            pointer-events: none;
+            position: absolute;
+            inset: 0;
+            z-index: 50;
+        }
+        @keyframes scan {
+          from { transform: translateY(-100%); }
+          to { transform: translateY(300%); }
+        }
+        .vignette {
+            box-shadow: inset 0 0 180px rgba(0,0,0,0.9);
+            pointer-events: none;
+            position: absolute;
+            inset: 0;
+        }
+        .shimmer {
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+            background-size: 200% 100%;
+            animation: shimmer-anim 2s infinite;
+        }
+        @keyframes shimmer-anim {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+        const CANVAS_WIDTH = 1200;
+        const CANVAS_HEIGHT = 800;
+        const PLAYER_SPEED = 4.4;
+        const BULLET_SPEED = 20;
+        const RELOAD_TIME = 150;
+        const ROUND_DURATION = 90;
+        
+        const COLORS = {
+            TEAM_A: '#ff3131',
+            TEAM_B: '#00d2ff',
+            BLOOD: '#dc2626',
+            MUZZLE: '#fde047',
+            WALL_TOP: '#475569',
+            WALL_SIDE: '#1e293b'
+        };
+
+        const MAP_LAYOUTS = [
+            [
+                { x: 250, y: 150, w: 40, h: 500 },
+                { x: 910, y: 150, w: 40, h: 500 },
+                { x: 500, y: 350, w: 200, h: 100 },
+                { x: 550, y: 80, w: 100, h: 60 },
+                { x: 550, y: 660, w: 100, h: 60 },
+            ],
+            [
+                { x: 0, y: 380, w: 300, h: 40 },
+                { x: 900, y: 380, w: 300, h: 40 },
+                { x: 580, y: 200, w: 40, h: 400 },
+            ]
+        ];
+
+        const ChatBox = ({ playerName, roomId, team, compact = false }) => {
+            const [messages, setMessages] = useState([
+                { id: 'sys', sender: 'TACTICAL_NET', text: `LINK ESTABLISHED: ${roomId}`, team: null }
+            ]);
+            const [input, setInput] = useState('');
+            const scrollRef = useRef(null);
+
+            useEffect(() => {
+                if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+            }, [messages]);
+
+            const handleSend = (e) => {
+                e.preventDefault();
+                if (!input.trim()) return;
+                setMessages(prev => [...prev, { id: Date.now(), sender: playerName, text: input, team }]);
+                setInput('');
+            };
+
+            return (
+                <div className={`flex flex-col bg-slate-900/80 border border-slate-800 rounded-xl overflow-hidden backdrop-blur-md ${compact ? 'h-40 w-64' : 'h-full w-full'}`}>
+                    <div className="bg-slate-800/50 px-3 py-1.5 border-b border-slate-700 flex justify-between items-center">
+                        <span className="text-[8px] pixel-font text-slate-400 uppercase tracking-widest">{roomId}</span>
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                    </div>
+                    <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2">
+                        {messages.map(m => (
+                            <div key={m.id} className="text-[9px] flex flex-col">
+                                <span className={`font-black uppercase tracking-tighter ${m.sender === playerName ? 'text-cyan-400' : m.team === 'A' ? 'text-red-500' : m.team === 'B' ? 'text-blue-400' : 'text-slate-500'}`}>{m.sender}:</span>
+                                <span className="text-white opacity-80 mt-0.5">{m.text}</span>
+                            </div>
+                        ))}
+                    </div>
+                    <form onSubmit={handleSend} className="p-2 border-t border-slate-800 flex pointer-events-auto">
+                        <input value={input} onChange={e => setInput(e.target.value)} type="text" placeholder="TYPE..." className="flex-1 bg-transparent text-[9px] pixel-font text-white focus:outline-none" />
+                    </form>
+                </div>
+            );
+        };
+
+        const HUD = ({ gameState, onQuit, announcement }) => {
+            const local = gameState.players.find(p => p.id === 'local');
+            if (!local) return null;
+
+            return (
+                <div className="absolute inset-0 pointer-events-none p-10 flex flex-col justify-between select-none">
+                    <div className="flex justify-between items-start">
+                        <div className="flex space-x-6">
+                            <div className="bg-black/80 border-l-4 border-red-600 p-5 rounded-r shadow-2xl">
+                                <div className="text-[9px] text-red-500 font-black">ALPHA SQUAD</div>
+                                <div className="text-4xl font-black pixel-font text-white">{gameState.score.A}</div>
+                            </div>
+                            <div className="bg-black/80 border-l-4 border-cyan-400 p-5 rounded-r shadow-2xl">
+                                <div className="text-[9px] text-cyan-400 font-black">BRAVO SQUAD</div>
+                                <div className="text-4xl font-black pixel-font text-white">{gameState.score.B}</div>
+                            </div>
+                        </div>
+                        <div className="bg-black/60 p-5 rounded-2xl border border-slate-800 flex flex-col items-center min-w-[140px]">
+                            <div className="text-[10px] text-slate-500 font-black mb-1">TIME</div>
+                            <div className="text-3xl font-black text-white">{Math.floor(gameState.timeLeft / 60)}:{(gameState.timeLeft % 60).toString().padStart(2, '0')}</div>
+                        </div>
+                        <button onClick={onQuit} className="pointer-events-auto bg-slate-900/80 p-3 rounded-lg border border-slate-700 text-[10px] pixel-font">QUIT</button>
+                    </div>
+
+                    <div className="text-center">
+                        {announcement && <div className="bg-black/40 backdrop-blur-md px-10 py-4 rounded-full border border-cyan-500/30 text-cyan-400 text-lg font-black tracking-widest animate-pulse inline-block">{announcement}</div>}
+                    </div>
+
+                    <div className="flex justify-between items-end">
+                        <div className="bg-black/90 p-8 rounded-[40px] border border-slate-800 w-96 relative overflow-hidden">
+                            <div className="flex justify-between items-end mb-4">
+                                <div><div className="text-[10px] text-slate-500">OPERATOR</div><div className="text-xl font-black text-white">{local.name}</div></div>
+                                <div className="text-right text-[10px] text-cyan-500">{local.class}</div>
+                            </div>
+                            <div className="mb-4">
+                                <div className="flex justify-between text-[10px] font-black uppercase mb-1"><span>HEALTH Sync</span><span>{Math.ceil(local.health)}%</span></div>
+                                <div className="w-full bg-slate-900 h-3 rounded-full overflow-hidden border border-slate-800"><div className={`h-full ${local.health < 30 ? 'bg-red-600' : 'bg-cyan-500'}`} style={{ width: `${local.health}%` }}></div></div>
+                            </div>
+                            <div className="flex justify-between text-xs font-black pt-4 border-t border-slate-800">
+                                <span>KILLS: {local.kills}</span><span>DEATHS: {local.deaths}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const GameArena = ({ config, onQuit }) => {
+            const canvasRef = useRef(null);
+            const requestRef = useRef(0);
+            const keys = useRef({});
+            const mouse = useRef({ x: 0, y: 0 });
+            const lastShot = useRef(0);
+            const [gameState, setGameState] = useState(null);
+            const [announcement, setAnnouncement] = useState('READY TO DEPLOY');
+
+            useEffect(() => {
+                const teamASize = parseInt(config.mode.split('v')[0]);
+                const teamBSize = parseInt(config.mode.split('v')[1]);
+                const players = [];
+
+                players.push({ id: 'local', name: config.name, team: 'A', x: 150, y: CANVAS_HEIGHT/2, angle: 0, health: 100, kills: 0, deaths: 0, color: COLORS.TEAM_A, isBot: false, class: config.playerClass, recoil: 0, walkCycle: 0, flash: 0 });
+                
+                for(let i=1; i < teamASize; i++) players.push({ id: `a${i}`, name: `Unit-A${i}`, team: 'A', x: 150, y: (CANVAS_HEIGHT/(teamASize+1))*(i+1), angle: 0, health: 100, kills: 0, deaths: 0, color: COLORS.TEAM_A, isBot: true, class: 'Assault', recoil: 0, walkCycle: 0, flash: 0 });
+                for(let i=0; i < teamBSize; i++) players.push({ id: `b${i}`, name: `Unit-B${i}`, team: 'B', x: CANVAS_WIDTH-150, y: (CANVAS_HEIGHT/(teamBSize+1))*(i+1), angle: Math.PI, health: 100, kills: 0, deaths: 0, color: COLORS.TEAM_B, isBot: true, class: 'Assault', recoil: 0, walkCycle: 0, flash: 0 });
+
+                setGameState({ players, bullets: [], particles: [], decals: [], walls: MAP_LAYOUTS[0], score: { A: 0, B: 0 }, timeLeft: ROUND_DURATION, shake: 0 });
+            }, []);
+
+            const update = useCallback(() => {
+                if (!gameState) return;
+                const s = { ...gameState };
+                const local = s.players.find(p => p.id === 'local');
+                
+                if (local && local.health > 0) {
+                    let dx = 0, dy = 0;
+                    if (keys.current['w']) dy -= 1;
+                    if (keys.current['s']) dy += 1;
+                    if (keys.current['a']) dx -= 1;
+                    if (keys.current['d']) dx += 1;
+                    if (dx !== 0 || dy !== 0) {
+                        const len = Math.sqrt(dx*dx + dy*dy);
+                        const mx = (dx/len) * PLAYER_SPEED; const my = (dy/len) * PLAYER_SPEED;
+                        if (!s.walls.some(w => local.x + mx + 12 > w.x && local.x + mx - 12 < w.x + w.w && local.y + 12 > w.y && local.y - 12 < w.y + w.h)) local.x += mx;
+                        if (!s.walls.some(w => local.x + 12 > w.x && local.x - 12 < w.x + w.w && local.y + my + 12 > w.y && local.y + my - 12 < w.y + w.h)) local.y += my;
+                        local.walkCycle += 0.2;
+                    } else local.walkCycle *= 0.8;
+
+                    const rect = canvasRef.current.getBoundingClientRect();
+                    local.angle = Math.atan2(mouse.current.y - (local.y + rect.top), mouse.current.x - (local.x + rect.left));
+
+                    if ((keys.current[' '] || keys.current['click']) && Date.now() - lastShot.current > RELOAD_TIME) {
+                        local.recoil = 15; s.shake = 10;
+                        s.bullets.push({ id: Math.random().toString(), ownerId: 'local', team: 'A', x: local.x + Math.cos(local.angle)*35, y: local.y + Math.sin(local.angle)*35, vx: Math.cos(local.angle)*BULLET_SPEED, vy: Math.sin(local.angle)*BULLET_SPEED, damage: 25 });
+                        lastShot.current = Date.now();
+                    }
+                }
+
+                s.players.forEach(p => {
+                    p.recoil *= 0.7; p.flash = Math.max(0, p.flash - 1);
+                    if (!p.isBot || p.health <= 0) return;
+                    const enemies = s.players.filter(e => e.team !== p.team && e.health > 0);
+                    if (enemies.length > 0) {
+                        const target = enemies[0]; p.angle = Math.atan2(target.y - p.y, target.x - p.x);
+                        if (Math.hypot(target.x - p.x, target.y - p.y) > 200) { p.x += Math.cos(p.angle)*2.5; p.y += Math.sin(p.angle)*2.5; p.walkCycle += 0.2; }
+                        if (Math.random() < 0.03) s.bullets.push({ id: Math.random().toString(), ownerId: p.id, team: p.team, x: p.x + Math.cos(p.angle)*35, y: p.y + Math.sin(p.angle)*35, vx: Math.cos(p.angle)*BULLET_SPEED, vy: Math.sin(p.angle)*BULLET_SPEED, damage: 15 });
+                    }
+                });
+
+                s.bullets = s.bullets.filter(b => {
+                    b.x += b.vx; b.y += b.vy;
+                    if (s.walls.some(w => b.x > w.x && b.x < w.x + w.w && b.y > w.y && b.y < w.y + w.h)) return false;
+                    let hit = false;
+                    s.players.forEach(p => {
+                        if (p.team !== b.team && p.health > 0 && Math.hypot(p.x - b.x, p.y - b.y) < 22) {
+                            p.health -= b.damage; p.flash = 6; hit = true;
+                            if (p.health <= 0) { s.score[b.team]++; s.players.find(sp => sp.id === b.ownerId).kills++; p.deaths++; setTimeout(() => { if(p.isBot){p.health=100; p.x=p.team==='A'?100:CANVAS_WIDTH-100; p.y=Math.random()*CANVAS_HEIGHT;} }, 4000); }
+                        }
+                    });
+                    return !hit && b.x > 0 && b.x < CANVAS_WIDTH && b.y > 0 && b.y < CANVAS_HEIGHT;
+                });
+
+                s.shake *= 0.85;
+                setGameState(s);
+                requestRef.current = requestAnimationFrame(update);
+            }, [gameState]);
+
+            useEffect(() => {
+                requestRef.current = requestAnimationFrame(update);
+                const kd = (e) => keys.current[e.key.toLowerCase()] = true;
+                const ku = (e) => keys.current[e.key.toLowerCase()] = false;
+                const mm = (e) => mouse.current = { x: e.clientX, y: e.clientY };
+                const md = () => keys.current['click'] = true;
+                const mu = () => keys.current['click'] = false;
+                window.addEventListener('keydown', kd); window.addEventListener('keyup', ku); window.addEventListener('mousemove', mm);
+                window.addEventListener('mousedown', md); window.addEventListener('mouseup', mu);
+                return () => { cancelAnimationFrame(requestRef.current); window.removeEventListener('keydown', kd); window.removeEventListener('keyup', ku); window.removeEventListener('mousemove', mm); window.removeEventListener('mousedown', md); window.removeEventListener('mouseup', mu); };
+            }, [update]);
+
+            const draw = (ctx) => {
+                if (!gameState) return;
+                ctx.save(); if(gameState.shake > 0.5) ctx.translate((Math.random()-0.5)*gameState.shake, (Math.random()-0.5)*gameState.shake);
+                ctx.fillStyle = '#010409'; ctx.fillRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT);
+                ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 1;
+                for(let x=0; x<CANVAS_WIDTH; x+=80) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,CANVAS_HEIGHT); ctx.stroke(); }
+                for(let y=0; y<CANVAS_HEIGHT; y+=80) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(CANVAS_WIDTH,y); ctx.stroke(); }
+
+                gameState.walls.forEach(w => {
+                    ctx.fillStyle = '#1e293b'; ctx.fillRect(w.x, w.y, w.w, w.h);
+                    ctx.strokeStyle = '#334155'; ctx.strokeRect(w.x, w.y, w.w, w.h);
+                });
+
+                gameState.bullets.forEach(b => {
+                    ctx.save();
+                    const bColor = b.team === 'A' ? '#f43f5e' : '#0ea5e9';
+                    ctx.shadowBlur = 15; ctx.shadowColor = bColor;
+                    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(b.x, b.y, 5, 0, Math.PI*2); ctx.fill();
+                    ctx.restore();
+                });
+
+                gameState.players.forEach(p => {
+                    if (p.health <= 0) return;
+                    ctx.save();
+                    const bob = Math.sin(p.walkCycle)*4;
+                    ctx.translate(p.x - Math.cos(p.angle)*p.recoil, p.y - Math.sin(p.angle)*p.recoil + bob);
+                    ctx.rotate(p.angle);
+                    if (p.flash > 0) ctx.filter = 'brightness(5)';
+                    const px = 3;
+                    ctx.fillStyle = p.team === 'A' ? '#9f1239' : '#1e40af'; ctx.fillRect(-px*4, -px*5, px*8, px*10);
+                    ctx.fillStyle = p.color; ctx.fillRect(-px*3, -px*4, px*6, px*8);
+                    ctx.fillStyle = '#000'; ctx.fillRect(px*3, -px, px*15, px*3);
+                    ctx.restore();
+                    const bw = 40; ctx.fillStyle = '#111'; ctx.fillRect(p.x-bw/2, p.y-40, bw, 6);
+                    ctx.fillStyle = p.team === 'A' ? '#f43f5e' : '#0ea5e9'; ctx.fillRect(p.x-bw/2, p.y-40, bw*(p.health/100), 6);
+                });
+                ctx.restore();
+            };
+
+            useEffect(() => {
+                const ctx = canvasRef.current?.getContext('2d');
+                const frame = () => { if(ctx) draw(ctx); requestAnimationFrame(frame); };
+                requestAnimationFrame(frame);
+            }, [gameState]);
+
+            return (
+                <div className="relative flex-1 flex items-center justify-center bg-black">
+                    <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} />
+                    {gameState && <HUD gameState={gameState} onQuit={onQuit} announcement={announcement} />}
+                    <div className="vignette"></div>
+                </div>
+            );
+        };
+
+        const Lobby = ({ onStart }) => {
+            const [mode, setMode] = useState('1v1');
+            const [pClass, setPClass] = useState('Assault');
+            const [name, setName] = useState('AGENT_' + Math.floor(Math.random()*99));
+            return (
+                <div className="flex-1 flex flex-col items-center justify-center p-8 bg-[radial-gradient(circle_at_center,_#0f172a,_#000)]">
+                    <h1 className="text-7xl font-black pixel-font text-blue-500 mb-8 drop-shadow-2xl">PIXEL SHOTS</h1>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-5xl">
+                        <div className="bg-slate-900/60 p-8 rounded-3xl border border-slate-800 space-y-4">
+                            <h3 className="text-xs text-slate-500 font-black uppercase">Identity</h3>
+                            <input value={name} onChange={e=>setName(e.target.value)} className="w-full bg-slate-800 p-4 rounded-xl border border-slate-700 outline-none focus:border-blue-500" />
+                            <h3 className="text-xs text-slate-500 font-black uppercase mt-6">Mode</h3>
+                            <div className="grid grid-cols-2 gap-2">
+                                {['1v1', '2v2', '3v3', '4v4', '5v5', '1v5'].map(m => <button key={m} onClick={()=>setMode(m)} className={`p-3 rounded-lg border text-xs font-bold ${mode===m ? 'bg-blue-600 border-blue-400' : 'bg-slate-800 border-slate-700'}`}>{m}</button>)}
+                            </div>
+                        </div>
+                        <div className="bg-slate-900/60 p-8 rounded-3xl border border-slate-800 space-y-4">
+                            <h3 className="text-xs text-slate-500 font-black uppercase">Class Selection</h3>
+                            {['Assault', 'Sniper', 'Tank'].map(c => <button key={c} onClick={()=>setPClass(c)} className={`w-full p-4 rounded-xl border text-left flex justify-between items-center transition-all ${pClass===c ? 'bg-indigo-600/30 border-indigo-500' : 'bg-slate-800 border-slate-700 hover:bg-slate-700'}`}><span className="font-black text-sm">{c.toUpperCase()}</span>{pClass===c && <div className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse"></div>}</button>)}
+                        </div>
+                        <div className="bg-slate-900/60 p-8 rounded-3xl border border-slate-800 flex flex-col items-center justify-center">
+                            <h3 className="text-xs text-slate-500 font-black uppercase mb-6">Global Net</h3>
+                            <div className="flex-1 w-full"><ChatBox playerName={name} roomId="GLOBAL" /></div>
+                        </div>
+                    </div>
+                    <button onClick={()=>onStart(mode, pClass, name)} className="mt-12 px-16 py-6 bg-blue-600 text-white font-black rounded-full pixel-font text-2xl shadow-[0_0_50px_rgba(37,99,235,0.4)] shimmer hover:scale-105 transition-all">DEEP DEPLOYMENT</button>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [view, setView] = useState('lobby');
+            const [config, setConfig] = useState({});
+            return (
+                <div className="w-full h-screen flex flex-col">
+                    {view === 'lobby' && <Lobby onStart={(mode, playerClass, name) => { setConfig({ mode, playerClass, name }); setView('game'); }} />}
+                    {view === 'game' && <GameArena config={config} onQuit={() => setView('lobby')} />}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
