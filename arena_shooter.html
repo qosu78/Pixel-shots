@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arena Shooter | Tactical Pixel Combat</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        :root {
+            --team-a: #ff3131;
+            --team-b: #00d2ff;
+            --bg-dark: #020617;
+        }
+        body { 
+            margin: 0; padding: 0; background-color: var(--bg-dark); 
+            font-family: 'Inter', sans-serif; overflow: hidden; color: white; user-select: none;
+        }
+        .pixel-font { font-family: 'Press+Start+2P', cursive; }
+        canvas { 
+            display: block; background: #010409; image-rendering: pixelated; 
+            touch-action: none; box-shadow: 0 0 100px rgba(0,0,0,1); 
+        }
+        .vignette {
+            box-shadow: inset 0 0 180px rgba(0,0,0,0.9);
+            pointer-events: none; position: absolute; inset: 0; z-index: 10;
+        }
+        @keyframes scanline {
+            0% { transform: translateY(-100%); }
+            100% { transform: translateY(100%); }
+        }
+        .scanline-effect {
+            position: absolute; inset: 0; pointer-events: none;
+            background: linear-gradient(to bottom, transparent 50%, rgba(0, 210, 255, 0.05) 50%);
+            background-size: 100% 4px; z-index: 20;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        const CANVAS_WIDTH = 1200;
+        const CANVAS_HEIGHT = 800;
+        const PLAYER_SPEED = 4.2;
+        const BULLET_SPEED = 24;
+        const RELOAD_TIME = 120;
+        const ROUND_DURATION = 90;
+
+        const COLORS = {
+            TEAM_A: '#ff3131',
+            TEAM_B: '#00d2ff',
+            BACKGROUND: '#010409',
+            WALL: '#1e293b'
+        };
+
+        const MAP = [
+            { x: 250, y: 150, w: 40, h: 500 },
+            { x: 910, y: 150, w: 40, h: 500 },
+            { x: 500, y: 350, w: 200, h: 100 },
+            { x: 550, y: 60, w: 100, h: 60 },
+            { x: 550, y: 680, w: 100, h: 60 }
+        ];
+
+        const HUD = ({ gameState, onQuit, announcement }) => {
+            const local = gameState.players.find(p => p.id === 'local');
+            if (!local) return null;
+
+            return (
+                <div className="absolute inset-0 pointer-events-none p-10 flex flex-col justify-between">
+                    <div className="flex justify-between items-start">
+                        <div className="flex space-x-6">
+                            <div className="bg-slate-900/90 border-l-4 border-rose-600 p-5 rounded-r shadow-2xl">
+                                <div className="text-[9px] text-rose-500 font-black mb-1">ALPHA</div>
+                                <div className="text-4xl font-black pixel-font text-white">{gameState.score.A}</div>
+                            </div>
+                            <div className="bg-slate-900/90 border-l-4 border-cyan-400 p-5 rounded-r shadow-2xl">
+                                <div className="text-[9px] text-cyan-400 font-black mb-1">BRAVO</div>
+                                <div className="text-4xl font-black pixel-font text-white">{gameState.score.B}</div>
+                            </div>
+                        </div>
+                        <div className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 flex flex-col items-center min-w-[140px]">
+                            <div className="text-[10px] text-slate-500 font-black mb-1">TIME</div>
+                            <div className="text-3xl font-black text-white">{gameState.timeLeft}s</div>
+                        </div>
+                        <button onClick={onQuit} className="pointer-events-auto bg-rose-600 px-6 py-3 rounded text-[9px] pixel-font text-white">Abort</button>
+                    </div>
+                    <div className="text-center">
+                        {announcement && <div className="bg-black/60 px-10 py-4 rounded-full border border-cyan-500/40 text-cyan-400 text-lg font-black tracking-[0.3em] animate-pulse inline-block">{announcement}</div>}
+                    </div>
+                    <div className="bg-slate-900/90 p-8 rounded-[40px] border border-slate-800 w-96 relative overflow-hidden">
+                        <div className="flex justify-between items-end mb-4">
+                            <div><div className="text-[9px] text-slate-500">OPERATOR</div><div className="text-xl font-black text-white">{local.name}</div></div>
+                            <div className="text-[9px] font-black text-rose-500 uppercase">TEAM ALPHA</div>
+                        </div>
+                        <div className="w-full bg-slate-950 h-3 rounded-full overflow-hidden"><div className="h-full bg-rose-600" style={{ width: `${local.health}%` }}></div></div>
+                        <div className="flex justify-between text-[10px] font-black pt-4"><span>KILLS: {local.kills}</span><span>DEATHS: {local.deaths}</span></div>
+                    </div>
+                </div>
+            );
+        };
+
+        const GameArena = ({ name, mode, onQuit }) => {
+            const canvasRef = useRef(null);
+            const requestRef = useRef(0);
+            const keys = useRef({});
+            const mouse = useRef({ x: 0, y: 0 });
+            const lastShot = useRef(0);
+            const [gameState, setGameState] = useState(null);
+            const [announcement, setAnnouncement] = useState('INITIATING...');
+
+            const checkWall = (x, y) => MAP.some(w => x + 22 > w.x && x - 22 < w.x + w.w && y + 22 > w.y && y - 22 < w.y + w.h);
+
+            useEffect(() => {
+                const players = [
+                    { id: 'local', name, team: 'A', x: 150, y: 400, angle: 0, health: 100, kills: 0, deaths: 0, isBot: false, recoil: 0, walkCycle: 0, flash: 0 },
+                    { id: 'bot1', name: 'CYPHER', team: 'B', x: 1050, y: 400, angle: Math.PI, health: 100, kills: 0, deaths: 0, isBot: true, recoil: 0, walkCycle: 0, flash: 0 }
+                ];
+                setGameState({ players, bullets: [], score: { A: 0, B: 0 }, timeLeft: ROUND_DURATION, shake: 0 });
+                setTimeout(() => setAnnouncement('ENGAGE'), 1500);
+            }, [name]);
+
+            const update = useCallback(() => {
+                if (!gameState) return;
+                const s = { ...gameState };
+                const local = s.players.find(p => p.id === 'local');
+
+                // Input
+                if (local && local.health > 0) {
+                    let dx = 0, dy = 0;
+                    if (keys.current['w']) dy -= 1; if (keys.current['s']) dy += 1;
+                    if (keys.current['a']) dx -= 1; if (keys.current['d']) dx += 1;
+                    if (dx !== 0 || dy !== 0) {
+                        const len = Math.sqrt(dx*dx+dy*dy);
+                        const mx = (dx/len)*PLAYER_SPEED; const my = (dy/len)*PLAYER_SPEED;
+                        if (!checkWall(local.x+mx, local.y)) local.x += mx;
+                        if (!checkWall(local.x, local.y+my)) local.y += my;
+                        local.walkCycle += 0.35;
+                    }
+                    const rect = canvasRef.current.getBoundingClientRect();
+                    local.angle = Math.atan2(mouse.current.y - (local.y + rect.top), mouse.current.x - (local.x + rect.left));
+                    if ((keys.current[' '] || keys.current['click']) && Date.now() - lastShot.current > RELOAD_TIME) {
+                        local.recoil = 20; s.bullets.push({ team: 'A', x: local.x + Math.cos(local.angle)*45, y: local.y + Math.sin(local.angle)*45, vx: Math.cos(local.angle)*BULLET_SPEED, vy: Math.sin(local.angle)*BULLET_SPEED });
+                        lastShot.current = Date.now();
+                    }
+                }
+
+                // Player-to-Player Collision resolution
+                const colRadius = 45;
+                for (let i = 0; i < s.players.length; i++) {
+                    for (let j = i + 1; j < s.players.length; j++) {
+                        const p1 = s.players[i]; const p2 = s.players[j];
+                        if (p1.health <= 0 || p2.health <= 0) continue;
+                        const dx = p1.x - p2.x; const dy = p1.y - p2.y;
+                        const d = Math.hypot(dx, dy);
+                        if (d < colRadius && d > 0) {
+                            const over = (colRadius - d) * 0.4;
+                            const nx = dx / d; const ny = dy / d;
+                            if (!checkWall(p1.x + nx*over, p1.y + ny*over)) { p1.x += nx*over; p1.y += ny*over; }
+                            if (!checkWall(p2.x - nx*over, p2.y - ny*over)) { p2.x -= nx*over; p2.y -= ny*over; }
+                        }
+                    }
+                }
+
+                // AI & Bullets
+                s.players.forEach(p => {
+                    p.recoil *= 0.7; p.flash = Math.max(0, p.flash - 1);
+                    if (p.isBot && p.health > 0) {
+                        const target = s.players.find(e => e.team !== p.team && e.health > 0);
+                        if (target) {
+                            p.angle = Math.atan2(target.y-p.y, target.x-p.x);
+                            if (Math.hypot(target.x-p.x, target.y-p.y) > 250) { p.x += Math.cos(p.angle)*3; p.y += Math.sin(p.angle)*3; p.walkCycle += 0.3; }
+                            if (Math.random() < 0.03) s.bullets.push({ team: p.team, x: p.x + Math.cos(p.angle)*45, y: p.y + Math.sin(p.angle)*45, vx: Math.cos(p.angle)*BULLET_SPEED, vy: Math.sin(p.angle)*BULLET_SPEED });
+                        }
+                    }
+                });
+
+                s.bullets = s.bullets.filter(b => {
+                    b.x += b.vx; b.y += b.vy;
+                    if (MAP.some(w => b.x > w.x && b.x < w.x+w.w && b.y > w.y && b.y < w.y+w.h)) return false;
+                    let hit = false;
+                    s.players.forEach(p => {
+                        if (p.team !== b.team && p.health > 0 && Math.hypot(p.x - b.x, p.y - b.y) < 32) {
+                            p.health -= 25; p.flash = 10; hit = true;
+                            if (p.health <= 0) { s.score[b.team]++; setTimeout(() => { p.health=100; p.x=p.team==='A'?100:1100; p.y=400; }, 3000); }
+                        }
+                    });
+                    return !hit && b.x > 0 && b.x < CANVAS_WIDTH && b.y > 0 && b.y < CANVAS_HEIGHT;
+                });
+
+                setGameState(s);
+                requestRef.current = requestAnimationFrame(update);
+            }, [gameState]);
+
+            useEffect(() => {
+                requestRef.current = requestAnimationFrame(update);
+                const kd = (e) => keys.current[e.key.toLowerCase()] = true;
+                const ku = (e) => keys.current[e.key.toLowerCase()] = false;
+                const mm = (e) => mouse.current = { x: e.clientX, y: e.clientY };
+                window.addEventListener('keydown', kd); window.addEventListener('keyup', ku);
+                window.addEventListener('mousemove', mm);
+                window.addEventListener('mousedown', () => keys.current['click'] = true);
+                window.addEventListener('mouseup', () => keys.current['click'] = false);
+                return () => cancelAnimationFrame(requestRef.current);
+            }, [update]);
+
+            useEffect(() => {
+                const ctx = canvasRef.current?.getContext('2d');
+                const render = () => {
+                    if (!ctx || !gameState) return;
+                    ctx.fillStyle = '#010409'; ctx.fillRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT);
+                    MAP.forEach(w => { ctx.fillStyle = '#1e293b'; ctx.fillRect(w.x, w.y, w.w, w.h); });
+                    gameState.bullets.forEach(b => { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(b.x, b.y, 6, 0, Math.PI*2); ctx.fill(); });
+                    gameState.players.forEach(p => {
+                        if (p.health <= 0) return;
+                        ctx.save(); ctx.translate(p.x - Math.cos(p.angle)*p.recoil, p.y - Math.sin(p.angle)*p.recoil);
+                        ctx.rotate(p.angle); if (p.flash > 0) ctx.filter = 'brightness(5)';
+                        ctx.fillStyle = p.team === 'A' ? '#f43f5e' : '#0ea5e9'; ctx.fillRect(-18, -18, 36, 36);
+                        ctx.fillStyle = '#000'; ctx.fillRect(15, -4, 25, 8); ctx.restore();
+                    });
+                    requestAnimationFrame(render);
+                };
+                render();
+            }, [gameState]);
+
+            return (
+                <div className="relative h-screen bg-black flex items-center justify-center overflow-hidden cursor-crosshair">
+                    <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} />
+                    <HUD gameState={gameState} onQuit={onQuit} announcement={announcement} />
+                    <div className="vignette"></div>
+                    <div className="scanline-effect"></div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [view, setView] = useState('lobby');
+            const [name, setName] = useState('OPERATOR_' + Math.floor(Math.random()*99));
+            return (
+                <div className="h-screen flex flex-col">
+                    {view === 'lobby' ? (
+                        <div className="flex-1 flex flex-col items-center justify-center bg-[radial-gradient(circle_at_center,_#0f172a,_#000)] p-12">
+                            <h1 className="text-8xl font-black pixel-font text-blue-500 mb-12 drop-shadow-[0_0_30px_rgba(59,130,246,0.5)]">ARENA</h1>
+                            <div className="bg-slate-900/60 p-12 rounded-[50px] border border-slate-800 space-y-10 w-full max-w-xl text-center">
+                                <input value={name} onChange={e=>setName(e.target.value)} className="w-full bg-slate-800 p-6 rounded-3xl border border-slate-700 text-2xl font-black text-center" />
+                                <button onClick={()=>setView('game')} className="w-full py-10 bg-blue-600 rounded-full pixel-font text-3xl shadow-2xl hover:scale-105 transition-all">LINK NEURAL CORE</button>
+                            </div>
+                        </div>
+                    ) : <GameArena name={name} onQuit={()=>setView('lobby')} />}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

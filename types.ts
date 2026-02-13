@@ -1,5 +1,5 @@
 
-export type GameMode = '1v1' | '2v2' | '3v3' | '4v4' | '5v5' | '1v5';
+export type GameMode = '1v1' | '2v2' | '3v3' | '4v4' | '5v5' | '1v5' | '1v1-local';
 
 export interface PlayerStats {
   xp: number;
@@ -7,6 +7,20 @@ export interface PlayerStats {
   totalKills: number;
   totalDeaths: number;
   rank: string;
+  coins: number;
+  diamonds: number;
+  equippedSkin: string;
+  ownedSkins: string[];
+  isBanned?: boolean;
+}
+
+export interface CharacterSkin {
+  id: string;
+  name: string;
+  color: string;
+  costCoins: number;
+  costDiamonds: number;
+  description: string;
 }
 
 export interface ChatMessage {
@@ -51,6 +65,7 @@ export interface Player {
   recoil: number;
   flashTime: number;
   walkCycle: number;
+  skinId?: string;
 }
 
 export type PlayerClass = 'Assault' | 'Sniper' | 'Tank';
@@ -67,33 +82,17 @@ export interface Bullet {
   life: number;
 }
 
-export interface Particle {
-  id: string;
+export interface Rect {
   x: number;
   y: number;
-  vx: number;
-  vy: number;
-  life: number;
-  maxLife: number;
+  w: number;
+  h: number;
   color: string;
-  size: number;
-  type: 'blood' | 'dust' | 'spark' | 'smoke' | 'shell';
-}
-
-export interface Decal {
-  x: number;
-  y: number;
-  size: number;
-  color: string;
-  type: 'blood' | 'bullet_hole';
-  angle: number;
 }
 
 export interface GameState {
   players: Player[];
   bullets: Bullet[];
-  particles: Particle[];
-  decals: Decal[];
   walls: Rect[];
   score: { A: number; B: number };
   rounds: { A: number; B: number; current: number; max: number };
@@ -102,12 +101,4 @@ export interface GameState {
   timeLeft: number;
   shake: number;
   isPrivate?: boolean;
-}
-
-export interface Rect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  color: string;
 }

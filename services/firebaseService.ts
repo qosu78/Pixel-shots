@@ -17,7 +17,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-const LOCAL_STORAGE_KEY = 'pixel_shots_local_stats';
+const LOCAL_STORAGE_KEY = 'pixel_shots_local_stats_v2';
 
 const calculateRank = (level: number) => {
   const rank = [...RANKS].reverse().find(r => level >= r.minLevel);
@@ -29,7 +29,12 @@ const getDefaultStats = (): PlayerStats => ({
   level: 1,
   totalKills: 0,
   totalDeaths: 0,
-  rank: 'Bronze'
+  rank: 'Bronze',
+  coins: 500,
+  diamonds: 0,
+  equippedSkin: 'default',
+  ownedSkins: ['default'],
+  isBanned: false
 });
 
 const saveLocal = (stats: PlayerStats) => {
@@ -38,7 +43,13 @@ const saveLocal = (stats: PlayerStats) => {
 
 const getLocal = (): PlayerStats => {
   const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-  return saved ? JSON.parse(saved) : getDefaultStats();
+  if (!saved) return getDefaultStats();
+  try {
+    const parsed = JSON.parse(saved);
+    return { ...getDefaultStats(), ...parsed };
+  } catch (e) {
+    return getDefaultStats();
+  }
 };
 
 export const getPlayerStats = async (playerName: string): Promise<PlayerStats> => {
@@ -47,8 +58,9 @@ export const getPlayerStats = async (playerName: string): Promise<PlayerStats> =
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       const data = docSnap.data() as PlayerStats;
-      saveLocal(data);
-      return data;
+      const completeStats = { ...getDefaultStats(), ...data };
+      saveLocal(completeStats);
+      return completeStats;
     } else {
       const newStats = getDefaultStats();
       await setDoc(docRef, newStats);
@@ -60,11 +72,33 @@ export const getPlayerStats = async (playerName: string): Promise<PlayerStats> =
   }
 };
 
-export const updatePlayerAfterMatch = async (playerName: string, kills: number, deaths: number, won: boolean, xpGained: number) => {
+export const banPlayer = async (playerName: string) => {
   const localStats = getLocal();
+  localStats.isBanned = true;
+  saveLocal(localStats);
+  try {
+    const docRef = doc(db, "players", playerName);
+    await updateDoc(docRef, { isBanned: true });
+  } catch (error) {
+    console.error("Ban sync failed:", error);
+  }
+};
+
+export const resetIdentity = () => {
+  localStorage.removeItem(LOCAL_STORAGE_KEY);
+  localStorage.removeItem('pixel_shots_last_name');
+  window.location.reload();
+};
+
+export const updatePlayerAfterMatch = async (playerName: string, kills: number, deaths: number, won: boolean, xpGained: number, coinsGained: number) => {
+  const localStats = getLocal();
+  if (localStats.isBanned) return;
+
   localStats.totalKills += kills;
   localStats.totalDeaths += deaths;
   localStats.xp += xpGained;
+  localStats.coins += coinsGained;
+
   while (localStats.xp >= localStats.level * LEVEL_XP_BASE) {
     localStats.xp -= localStats.level * LEVEL_XP_BASE;
     localStats.level++;
@@ -79,19 +113,60 @@ export const updatePlayerAfterMatch = async (playerName: string, kills: number, 
       level: localStats.level,
       totalKills: increment(kills),
       totalDeaths: increment(deaths),
+      coins: localStats.coins,
       rank: localStats.rank
     });
   } catch (error) {}
 };
 
-// --- PRIVATE ROOM SERVICES ---
+export const buySkin = async (playerName: string, skinId: string, costCoins: number, costDiamonds: number) => {
+  const stats = getLocal();
+  if (stats.isBanned) return false;
+  if (stats.coins >= costCoins && stats.diamonds >= costDiamonds) {
+    stats.coins -= costCoins;
+    stats.diamonds -= costDiamonds;
+    if (!stats.ownedSkins.includes(skinId)) {
+      stats.ownedSkins.push(skinId);
+    }
+    saveLocal(stats);
+    try {
+      const docRef = doc(db, "players", playerName);
+      await updateDoc(docRef, {
+        coins: stats.coins,
+        diamonds: stats.diamonds,
+        ownedSkins: stats.ownedSkins
+      });
+      return true;
+    } catch (e) { return true; }
+  }
+  return false;
+};
 
-const generateRoomCode = () => {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
+export const buyDiamonds = async (playerName: string, amount: number) => {
+  const stats = getLocal();
+  if (stats.isBanned) return false;
+  stats.diamonds += amount;
+  saveLocal(stats);
+  try {
+    const docRef = doc(db, "players", playerName);
+    await updateDoc(docRef, { diamonds: stats.diamonds });
+    return true;
+  } catch (e) { return true; }
+};
+
+export const equipSkin = async (playerName: string, skinId: string) => {
+  const stats = getLocal();
+  if (stats.isBanned) return;
+  stats.equippedSkin = skinId;
+  saveLocal(stats);
+  try {
+    const docRef = doc(db, "players", playerName);
+    await updateDoc(docRef, { equippedSkin: skinId });
+  } catch (e) {}
 };
 
 export const createPrivateRoom = async (playerName: string, mode: GameMode): Promise<string> => {
-  const code = generateRoomCode();
+  const code = Math.random().toString(36).substring(2, 8).toUpperCase();
   const roomId = `room_${Date.now()}`;
   const room: Room = {
     id: roomId,
@@ -108,57 +183,27 @@ export const createPrivateRoom = async (playerName: string, mode: GameMode): Pro
 export const joinPrivateRoom = async (playerName: string, code: string): Promise<string> => {
   const q = query(collection(db, "rooms"), where("code", "==", code.toUpperCase()), limit(1));
   const querySnapshot = await getDocs(q);
-  
   if (querySnapshot.empty) throw new Error("ROOM_NOT_FOUND");
-  
   const roomDoc = querySnapshot.docs[0];
   const roomData = roomDoc.data() as Room;
-  
-  const teamASize = parseInt(roomData.mode.split('v')[0]) || 1;
-  const maxPlayers = teamASize + (roomData.mode === '1v5' ? 5 : parseInt(roomData.mode.split('v')[1]));
-
-  if (roomData.players.length >= maxPlayers) throw new Error("ROOM_FULL");
-  
-  const newPlayer: RoomPlayer = {
-    id: 'local_' + Math.random(),
-    name: playerName,
-    team: roomData.players.length < teamASize ? 'A' : 'B',
-    isHost: false,
-    ready: true
-  };
-
+  const newPlayer: RoomPlayer = { id: 'local_' + Math.random(), name: playerName, team: 'A', isHost: false, ready: true };
   const updatedPlayers = [...roomData.players, newPlayer];
   await updateDoc(doc(db, "rooms", roomData.id), { players: updatedPlayers });
   return roomData.id;
 };
 
 export const listenToRoom = (roomId: string, callback: (room: Room) => void) => {
-  return onSnapshot(doc(db, "rooms", roomId), (doc) => {
-    if (doc.exists()) callback(doc.data() as Room);
-  });
+  return onSnapshot(doc(db, "rooms", roomId), (doc) => { if (doc.exists()) callback(doc.data() as Room); });
 };
-
-// --- CHAT SERVICES ---
 
 export const sendChatMessage = async (text: string, sender: string, roomId: string = 'global', team?: 'A' | 'B') => {
   const chatColl = collection(db, "chats", roomId, "messages");
-  await addDoc(chatColl, {
-    sender,
-    text,
-    team: team || null,
-    timestamp: serverTimestamp()
-  });
+  await addDoc(chatColl, { sender, text, team: team || null, timestamp: serverTimestamp() });
 };
 
 export const listenToChat = (roomId: string, callback: (msgs: ChatMessage[]) => void) => {
-  const chatColl = collection(db, "chats", roomId, "messages");
-  const q = query(chatColl, orderBy("timestamp", "asc"), limit(50));
-  
+  const q = query(collection(db, "chats", roomId, "messages"), orderBy("timestamp", "asc"), limit(50));
   return onSnapshot(q, (snapshot) => {
-    const messages = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    })) as ChatMessage[];
-    callback(messages);
+    callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ChatMessage[]);
   });
 };

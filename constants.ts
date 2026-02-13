@@ -1,16 +1,21 @@
 
+import { CharacterSkin, Rect } from './types';
+
 export const CANVAS_WIDTH = 1200;
 export const CANVAS_HEIGHT = 800;
 
 export const PLAYER_SIZE = 26;
-export const PLAYER_SPEED = 4.2;
-export const BULLET_SPEED = 24; // Faster for realism
-export const RELOAD_TIME = 120; 
+export const PLAYER_SPEED = 4.4;
+export const BULLET_SPEED = 28; 
+export const RELOAD_TIME = 100; 
 export const ROUND_DURATION = 90; 
 export const MAX_ROUNDS = 7;
 
 export const XP_PER_KILL = 50;
+export const COINS_PER_KILL = 10;
 export const XP_PER_WIN = 500;
+export const COINS_PER_WIN = 100;
+export const DIAMONDS_PER_LEVEL = 5;
 export const LEVEL_XP_BASE = 1000;
 
 export const RANKS = [
@@ -22,69 +27,66 @@ export const RANKS = [
   { name: 'Elite', minLevel: 100, color: '#ff00ff' }
 ];
 
-export const TACTICAL_TIPS = [
-  "Stay moving! A stationary target is an easy target.",
-  "Use walls for cover. The tactical environment is your best friend.",
-  "Coordinate with your squad. Alpha and Bravo units are stronger together.",
-  "Watch your health sync. Abort and regroup if vital signs are low.",
-  "Sniper units deal massive damage but are vulnerable at close range.",
-  "Tank units can absorb significant fire. Lead the charge.",
-  "Muzzle flashes reveal your position. Fire in controlled bursts."
-];
-
-export const MAP_LAYOUTS = [
-  // Map 1: CQC Killhouse
-  [
-    { x: 250, y: 150, w: 40, h: 500, color: '#334155' },
-    { x: 910, y: 150, w: 40, h: 500, color: '#334155' },
-    { x: 500, y: 350, w: 200, h: 100, color: '#475569' },
-    { x: 550, y: 60, w: 100, h: 60, color: '#334155' },
-    { x: 550, y: 680, w: 100, h: 60, color: '#334155' },
-    { x: 400, y: 100, w: 20, h: 120, color: '#1e293b' },
-    { x: 780, y: 580, w: 20, h: 120, color: '#1e293b' },
-  ],
-  // Map 2: Industrial Corridor
-  [
-    { x: 0, y: 200, w: 400, h: 40, color: '#334155' },
-    { x: 800, y: 560, w: 400, h: 40, color: '#334155' },
-    { x: 580, y: 100, w: 40, h: 600, color: '#475569' },
-    { x: 200, y: 400, w: 100, h: 100, color: '#1e293b' },
-    { x: 900, y: 300, w: 100, h: 100, color: '#1e293b' },
-  ],
-  // Map 3: The Lab
-  [
-    { x: 200, y: 200, w: 800, h: 20, color: '#475569' },
-    { x: 200, y: 580, w: 800, h: 20, color: '#475569' },
-    { x: 590, y: 0, w: 20, h: 250, color: '#334155' },
-    { x: 590, y: 550, w: 20, h: 250, color: '#334155' },
-    { x: 350, y: 380, w: 100, h: 40, color: '#1e293b' },
-    { x: 750, y: 380, w: 100, h: 40, color: '#1e293b' },
-  ],
-  // Map 4: Central Command
-  [
-    { x: 500, y: 0, w: 200, h: 150, color: '#334155' },
-    { x: 500, y: 650, w: 200, h: 150, color: '#334155' },
-    { x: 0, y: 350, w: 300, h: 100, color: '#475569' },
-    { x: 900, y: 350, w: 300, h: 100, color: '#475569' },
-    { x: 580, y: 380, w: 40, h: 40, color: '#f59e0b' }, // Power core
-  ],
-  // Map 5: Bridge Crossing
-  [
-    { x: 0, y: 0, w: 1200, h: 250, color: '#1e293b' },
-    { x: 0, y: 550, w: 1200, h: 250, color: '#1e293b' },
-    { x: 200, y: 250, w: 40, h: 300, color: '#475569' },
-    { x: 960, y: 250, w: 40, h: 300, color: '#475569' },
-    { x: 550, y: 380, w: 100, h: 40, color: '#334155' },
-  ]
+export const CHARACTER_CATALOG: CharacterSkin[] = [
+  { id: 'default', name: 'Neon Stalker', color: '#00f2ff', costCoins: 0, costDiamonds: 0, description: 'The standard issue grid operator.' },
+  { id: 'phantom', name: 'Ghost Protocol', color: '#94a3b8', costCoins: 500, costDiamonds: 0, description: 'Stealth-optimized neural sync.' },
+  { id: 'flare', name: 'Solar Flare', color: '#fbbf24', costCoins: 1000, costDiamonds: 0, description: 'High-intensity energy signature.' },
+  { id: 'void', name: 'Void Specter', color: '#a855f7', costCoins: 2000, costDiamonds: 5, description: 'Operator from the dark sectors.' },
+  { id: 'titan', name: 'Chrome Titan', color: '#e2e8f0', costCoins: 5000, costDiamonds: 10, description: 'Heavy armored assault unit.' },
+  { id: 'crimson', name: 'Red Overlord', color: '#ef4444', costCoins: 3000, costDiamonds: 5, description: 'Aggressive tactical dominance.' },
+  { id: 'emerald', name: 'Jade Blade', color: '#10b981', costCoins: 1500, costDiamonds: 0, description: 'Balanced grid performance.' },
+  { id: 'glitch', name: 'System Error', color: '#ec4899', costCoins: 4000, costDiamonds: 20, description: 'Unpredictable neural link.' },
+  { id: 'cyber', name: 'Cyberspace', color: '#3b82f6', costCoins: 2500, costDiamonds: 0, description: 'Pure digital intelligence.' },
+  { id: 'plasma', name: 'Plasma Core', color: '#f97316', costCoins: 6000, costDiamonds: 25, description: 'Nuclear-grade reactor suit.' },
+  { id: 'onyx', name: 'Onyx Guard', color: '#111827', costCoins: 8000, costDiamonds: 50, description: 'The ultimate grid shadow.' },
+  { id: 'neon_pink', name: 'Neon Rose', color: '#ff00ff', costCoins: 1200, costDiamonds: 0, description: 'Style meets lethal precision.' },
+  { id: 'deep_sea', name: 'Abyss Walker', color: '#0369a1', costCoins: 1800, costDiamonds: 2, description: 'Pressure-resistant grid gear.' },
+  { id: 'gold_elite', name: 'Golden Ace', color: '#fbbf24', costCoins: 15000, costDiamonds: 100, description: 'The sign of true grid mastery.' },
+  { id: 'frozen', name: 'Zero Kelvin', color: '#60a5fa', costCoins: 2200, costDiamonds: 0, description: 'Cold and calculated movements.' },
+  { id: 'acid', name: 'Toxic Hazard', color: '#84cc16', costCoins: 2800, costDiamonds: 5, description: 'Unstable biochemical armor.' },
+  { id: 'retro', name: 'Vapor Wave', color: '#8b5cf6', costCoins: 3500, costDiamonds: 10, description: 'Retro-future aesthetic unit.' },
+  { id: 'lightning', name: 'Volt Raider', color: '#eab308', costCoins: 4500, costDiamonds: 15, description: 'Supercharged neural pathways.' },
+  { id: 'blood', name: 'Blood Moon', color: '#b91c1c', costCoins: 5500, costDiamonds: 20, description: 'Eclipse-synchronized gear.' },
+  { id: 'starlight', name: 'Astro Knight', color: '#ffffff', costCoins: 10000, costDiamonds: 40, description: 'Forged in the stellar grid.' },
+  { id: 'inferno', name: 'Hellfire', color: '#dc2626', costCoins: 7000, costDiamonds: 30, description: 'Burning tactical rage.' },
+  { id: 'quantum', name: 'Shift Runner', color: '#2dd4bf', costCoins: 9000, costDiamonds: 45, description: 'Multi-dimensional grid tech.' }
 ];
 
 export const COLORS = {
-  TEAM_A: '#ff3131', 
-  TEAM_B: '#00d2ff', 
+  TEAM_A: '#ff0055', 
+  TEAM_B: '#00f2ff', 
   WALL: '#1e293b',
-  BACKGROUND: '#010409',
-  BLOOD: '#9f1239',
-  MUZZLE: '#fbbf24',
-  SPARK: '#fef08a',
+  BACKGROUND: '#050505',
+  BLOOD: '#ff0055',
+  MUZZLE: '#ffffff',
+  SPARK: '#00f2ff',
   SHELL: '#eab308'
 };
+
+// Tactical Map Layouts for different rounds
+export const MAP_LAYOUTS: Rect[][] = [
+  // Layout 1: Symmetric Defensive Barriers
+  [
+    { x: 300, y: 200, w: 40, h: 400, color: COLORS.WALL },
+    { x: 860, y: 200, w: 40, h: 400, color: COLORS.WALL },
+    { x: 500, y: 150, w: 200, h: 40, color: COLORS.WALL },
+    { x: 500, y: 610, w: 200, h: 40, color: COLORS.WALL },
+  ],
+  // Layout 2: Central Hub and Tactical Cover
+  [
+    { x: 550, y: 350, w: 100, h: 100, color: COLORS.WALL },
+    { x: 100, y: 100, w: 150, h: 30, color: COLORS.WALL },
+    { x: 100, y: 670, w: 150, h: 30, color: COLORS.WALL },
+    { x: 950, y: 100, w: 150, h: 30, color: COLORS.WALL },
+    { x: 950, y: 670, w: 150, h: 30, color: COLORS.WALL },
+  ],
+  // Layout 3: Long Range Corridors
+  [
+    { x: 0, y: 380, w: 250, h: 40, color: COLORS.WALL },
+    { x: 950, y: 380, w: 250, h: 40, color: COLORS.WALL },
+    { x: 400, y: 0, w: 40, h: 250, color: COLORS.WALL },
+    { x: 400, y: 550, w: 40, h: 250, color: COLORS.WALL },
+    { x: 760, y: 0, w: 40, h: 250, color: COLORS.WALL },
+    { x: 760, y: 550, w: 40, h: 250, color: COLORS.WALL },
+  ]
+];

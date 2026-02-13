@@ -1,5 +1,5 @@
 {
   "name": "Pixel Shots: Arena Shooter",
-  "description": "A high-octane 2D pixel-art arena shooter featuring various squad modes from 1v1 to 1v5 pro challenges, built with modern React and high-performance Canvas rendering.",
+  "description": "A high-octane 2D pixel-art arena shooter featuring various squad modes and an integrated Anticheat Protection system to ensure fair tactical gameplay.",
   "requestFramePermissions": []
 }
